@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Smart Containers — Dashboard</title>
+  <style>
+    body{font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial; margin:20px; background:#071026;color:#e6eef8}
+    .card{background:#071126;padding:18px;border-radius:10px;max-width:900px;margin:20px auto;border:1px solid rgba(255,255,255,0.03)}
+    .row{display:flex;gap:12px;align-items:center}
+    button{padding:8px 12px;border-radius:8px;border:none;background:#00c0ff;color:#041026;font-weight:700}
+    .danger{background:#ef4444;color:white}
+    .containerItem{background:rgba(255,255,255,0.02);padding:10px;border-radius:8px;margin-top:8px}
+    .small{font-size:13px;color:#9fb8d6}
+    input,select{padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:#e6eef8}
+    .grid{display:grid;grid-template-columns:1fr 220px;gap:12px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="row" style="justify-content:space-between">
+      <h2 style="margin:0">Smart Containers Dashboard</h2>
+      <div id="authActions">
+        <button id="btnSignIn">Sign in with Google</button>
+      </div>
+    </div>
+    <p class="small">Sign in to manage and view multiple containers. When you create a container you will get a <strong>container code</strong> to pair with your device via BLE.</p>
+
+    <div id="userPanel" style="display:none; margin-top:12px;">
+      <div class="grid">
+        <div>
+          <div class="row">
+            <div style="flex:1">
+              <strong id="userEmail">—</strong>
+              <div class="small" id="userUid">UID: —</div>
+            </div>
+            <div>
+              <button id="btnSignOut">Sign out</button>
+            </div>
+          </div>
+
+          <hr style="border:0;border-top:1px solid rgba(255,255,255,0.03);margin:12px 0">
+
+          <h3 style="margin:0">Your Containers</h3>
+          <div id="containersList" style="margin-top:8px"></div>
+
+          <div style="margin-top:12px">
+            <input id="newName" placeholder="Container name (eg. Rice)" />
+            <button id="btnCreate">Create container</button>
+          </div>
+
+          <div style="margin-top:12px" class="small">
+            <strong>Pairing instructions (BLE):</strong>
+            <ol>
+              <li>Power the container device. It will advertise a BLE name like <code>SmartContainer-XXXX</code>.</li>
+              <li>Open your mobile app and connect via BLE.</li>
+              <li>Send the string: <code>SSID;PASSWORD;YOUR_UID;CONTAINER_ID</code> (no spaces) over the BLE write characteristic.</li>
+              <li>The device will attempt to connect to Wi-Fi and then start uploading fill % to this container entry.</li>
+            </ol>
+          </div>
+        </div>
+
+        <div>
+          <div style="background:rgba(255,255,255,0.02);padding:10px;border-radius:8px">
+            <strong>Quick help</strong>
+            <div class="small" style="margin-top:8px">
+              <p>When you create a container, copy the <em>container code</em> to pair the device via BLE. For production, a mobile app should perform BLE write automatically.</p>
+            </div>
+          </div>
+
+          <div id="pairCodeBox" style="margin-top:12px;background:rgba(255,255,255,0.02);padding:10px;border-radius:8px">
+            <div class="small">Latest created container code:</div>
+            <div id="lastCreated" style="font-weight:700;margin-top:6px">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="signedOutNote" style="margin-top:16px" class="small">You must sign in to see and manage containers.</div>
+  </div>
+
+  <!-- Firebase SDK (modular) -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
+    import { getDatabase, ref, onChildAdded, onChildChanged, onValue, push, set, update, remove } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
+    import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
+
+    // --- Your Firebase config (same as your other file) ---
+    const firebaseConfig = {
+      apiKey: "AIzaSyDDkg0sjNL80TeNSV3CejbGmhZN9QxnR00",
+      authDomain: "ultrasonic-c1867.firebaseapp.com",
+      databaseURL: "https://ultrasonic-c1867-default-rtdb.firebaseio.com",
+      projectId: "ultrasonic-c1867",
+      storageBucket: "ultrasonic-c1867.appspot.com",
+      messagingSenderId: "754300602341",
+      appId: "1:754300602341:web:9822d6453942139ef5d10c",
+      measurementId: "G-4KC3E3HHB1"
+    };
+
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const auth = getAuth(app);
+    const provider = new GoogleAuthProvider();
+
+    // UI elements
+    const btnSignIn = document.getElementById('btnSignIn');
+    const btnSignOut = document.getElementById('btnSignOut');
+    const userPanel = document.getElementById('userPanel');
+    const userEmail = document.getElementById('userEmail');
+    const userUidEl = document.getElementById('userUid');
+    const containersList = document.getElementById('containersList');
+    const newName = document.getElementById('newName');
+    const btnCreate = document.getElementById('btnCreate');
+    const lastCreated = document.getElementById('lastCreated');
+    const signedOutNote = document.getElementById('signedOutNote');
+    const authActions = document.getElementById('authActions');
+
+    // Sign in flow
+    btnSignIn.addEventListener('click', async () => {
+      try {
+        await signInWithPopup(auth, provider);
+      } catch (e) {
+        alert('Sign in failed: ' + e.message);
+      }
+    });
+    btnSignOut.addEventListener('click', async () => {
+      await signOut(auth);
+    });
+
+    let containersRef = null;
+    let userUid = null;
+
+    // Simple helper to generate a container ID (short)
+    function generateContainerID(name) {
+      const suffix = Math.random().toString(36).substring(2,8).toUpperCase();
+      const short = name.replace(/\s+/g,'').toLowerCase().substring(0,6);
+      return (short + "_" + suffix);
+    }
+
+    function clearContainersUI() {
+      containersList.innerHTML = '';
+    }
+
+    function addOrUpdateContainerUI(id, data) {
+      // Try to find existing element
+      let el = document.getElementById('ct_' + id);
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'ct_' + id;
+        el.className = 'containerItem';
+        containersList.prepend(el);
+      }
+      const name = data.name || id;
+      const pct = (data.fillPercent !== undefined) ? Number(data.fillPercent).toFixed(1) + '%' : '—';
+      const paired = data.paired ? 'Yes' : 'No';
+      const last = data.lastUpdate ? new Date(Number(data.lastUpdate)*1000).toLocaleString() : (data.lastUpdate || '—');
+
+      el.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div>
+            <div style="font-weight:700">${name}</div>
+            <div class="small">ID: <code>${id}</code></div>
+            <div class="small">Paired: ${paired} • Last: ${last}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:28px;font-weight:800">${pct}</div>
+            <div class="small">fill</div>
+          </div>
+        </div>
+      `;
+    }
+
+    // Auth state
+    onAuthStateChanged(auth, user => {
+      if (user) {
+        signedOutNote.style.display = 'none';
+        userPanel.style.display = 'block';
+        authActions.style.display = 'none';
+        userEmail.textContent = user.email || user.displayName || 'User';
+        userUidEl.textContent = 'UID: ' + user.uid;
+        userUid = user.uid;
+
+        // Attach listener to user's containers
+        if (containersRef) {
+          // TODO: detach previous listeners if necessary (for MVP we recreate)
+        }
+        containersRef = ref(db, 'users/' + userUid + '/containers');
+        clearContainersUI();
+        onChildAdded(containersRef, (snap) => {
+          addOrUpdateContainerUI(snap.key, snap.val() || {});
+        });
+        onChildChanged(containersRef, (snap) => {
+          addOrUpdateContainerUI(snap.key, snap.val() || {});
+        });
+        // Also initial read in case onChild events missed
+        onValue(containersRef, (snapshot) => {
+          if (!snapshot.exists()) return;
+          snapshot.forEach(child => {
+            addOrUpdateContainerUI(child.key, child.val());
+          });
+        });
+
+      } else {
+        // Signed out
+        userPanel.style.display = 'none';
+        authActions.style.display = 'block';
+        signedOutNote.style.display = 'block';
+        userEmail.textContent = '—';
+        userUid = null;
+        clearContainersUI();
+      }
+    });
+
+    // Create container
+    btnCreate.addEventListener('click', async () => {
+      if (!userUid) { alert('Sign in first'); return; }
+      const name = (newName.value || 'container').trim();
+      const id = generateContainerID(name);
+      const containerObj = {
+        name: name,
+        paired: false,
+        fillPercent: 0,
+        lastUpdate: 0,
+        created: Date.now()
+      };
+      // Save at /users/UID/containers/id
+      try {
+        await set(ref(db, 'users/' + userUid + '/containers/' + id), containerObj);
+        lastCreated.textContent = id;
+        newName.value = '';
+        alert('Created container ' + id + '. Use this ID to pair the device via BLE.');
+      } catch (e) {
+        alert('Failed to create container: ' + e.message);
+      }
+    });
+  </script>
+</body>
+</html>
