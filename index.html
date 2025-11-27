@@ -259,67 +259,72 @@
     // -------------------------
     // Web Bluetooth pairing
     // -------------------------
-    async function startPairing(containerId, containerName) {
-      if (!userUid) { alert('Sign in first'); return; }
+   // -------------------------
+async function startPairing(containerId, containerName) {
+  if (!userUid) { 
+    alert('Sign in first'); 
+    return; 
+  }
 
-      // Get Wi-Fi details from the user (replace by nicer UI as desired)
-      const ssid = prompt('Enter Wi-Fi SSID (home network):');
-      if (!ssid) return;
-      const password = prompt('Enter Wi-Fi password:');
-      if (password === null) return; // allow empty pass if user passes empty string
+  pairStatus.textContent = 'Opening Bluetooth chooser...';
+  pairNotify.textContent = '';
 
-      pairStatus.textContent = 'Pairing...';
-      pairNotify.textContent = '';
+  try {
+    // STEP 1 — MUST happen while still in button click handler
+    // (This keeps Chrome happy)
+    const device = await navigator.bluetooth.requestDevice({
+      filters: [{ services: [SERVICE_UUID] }],
+      optionalServices: [SERVICE_UUID]
+    });
 
-      try {
-        // Use requestDevice with service filter
-        const device = await navigator.bluetooth.requestDevice({
-          filters: [{ services: [SERVICE_UUID] }],
-          optionalServices: [SERVICE_UUID]
-        });
+    pairStatus.textContent = 'Connecting to device...';
+    const server = await device.gatt.connect();
 
-        pairStatus.textContent = 'Connecting to device...';
-        const server = await device.gatt.connect();
+    const service = await server.getPrimaryService(SERVICE_UUID);
+    const writeChar = await service.getCharacteristic(CHAR_WRITE_UUID);
+    const statusChar = await service.getCharacteristic(CHAR_STATUS_UUID);
 
-        const service = await server.getPrimaryService(SERVICE_UUID);
-        const writeChar = await service.getCharacteristic(CHAR_WRITE_UUID);
-        const statusChar = await service.getCharacteristic(CHAR_STATUS_UUID);
+    // Subscribe to notifications
+    await statusChar.startNotifications();
+    statusChar.addEventListener('characteristicvaluechanged', (evt) => {
+      const decoded = new TextDecoder().decode(evt.target.value);
+      pairNotify.textContent = decoded;
+      console.log("Status:", decoded);
 
-        // Subscribe to status notifications
-        await statusChar.startNotifications();
-        statusChar.addEventListener('characteristicvaluechanged', (evt) => {
-          const value = evt.target.value;
-          // value is a DataView -> decode
-          const decoded = new TextDecoder().decode(value);
-          pairNotify.textContent = decoded;
-          console.log('Status:', decoded);
-
-          // If device reports WIFI_OK, mark container as paired in DB
-          if (decoded.includes('WIFI_OK')) {
-            set(ref(db, 'users/' + userUid + '/containers/' + containerId + '/paired'), true);
-            pairStatus.textContent = 'Paired (WIFI_OK)';
-          }
-          // Also update last notifications shown
-        });
-
-        // Build payload and write
-        const payload = `${ssid};${password};${userUid};${containerId}`;
-        const enc = new TextEncoder();
-        const bytes = enc.encode(payload);
-
-        // Write in one go (payload short)
-        await writeChar.writeValue(bytes);
-
-        pairStatus.textContent = 'Onboarding data sent — waiting for device response...';
-        alert('Onboarding data sent. Watch pairing status messages on the right.');
-
-      } catch (err) {
-        console.error(err);
-        pairStatus.textContent = 'Pairing failed';
-        pairNotify.textContent = err.message || err;
-        alert('Pairing failed: ' + (err.message || err));
+      if (decoded.includes("WIFI_OK")) {
+        set(ref(db, `users/${userUid}/containers/${containerId}/paired`), true);
+        pairStatus.textContent = 'Paired successfully!';
       }
-    }
+    });
+
+    // STEP 2 — AFTER Bluetooth is allowed, NOW we ask for WiFi data
+    const ssid = prompt('Enter WiFi SSID:');
+    if (!ssid) return;
+
+    const password = prompt('Enter WiFi password:');
+    if (password === null) return;
+
+    pairStatus.textContent = 'Sending onboarding data...';
+
+    // Build onboarding string
+    const payload = `${ssid};${password};${userUid};${containerId}`;
+    const enc = new TextEncoder();
+    const bytes = enc.encode(payload);
+
+    // Send to ESP32
+    await writeChar.writeValue(bytes);
+
+    pairStatus.textContent = 'Onboarding data sent. Waiting for device...';
+    alert("Data sent! Watch the pairing status box on the right.");
+
+  } catch (err) {
+    console.error(err);
+    pairStatus.textContent = 'Pairing failed';
+    pairNotify.textContent = err.message || err;
+    alert("Pairing failed: " + (err.message || err));
+  }
+}
+
 
     // Feature detection for Web Bluetooth
     if (!('bluetooth' in navigator)) {
@@ -333,4 +338,5 @@
   </script>
 </body>
 </html>
+
 
