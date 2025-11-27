@@ -1,143 +1,100 @@
 <!doctype html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Smart Containers — Dashboard & Web Bluetooth Pairing</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Smart Containers — Dashboard</title>
   <style>
-    :root{
-      --bg:#071026;
-      --card:#071126;
-      --accent:#00c0ff;
-      --muted:#9fb8d6;
-      --glass: rgba(255,255,255,0.03);
-    }
-    html,body{height:100%;margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,Arial;background:linear-gradient(180deg,#021021 0%, #071826 100%);color:#e6eef8}
-    .wrap{max-width:980px;margin:28px auto;padding:18px}
-    .card{background:linear-gradient(180deg,var(--card),#071126);padding:18px;border-radius:12px;box-shadow:0 8px 30px rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.03)}
-    h1{margin:0 0 6px 0;font-size:20px}
-    .lead{color:var(--muted);margin:0 0 12px 0}
-    .row{display:flex;gap:12px;align-items:center}
-    button{background:var(--accent);border:none;color:#021126;padding:8px 12px;border-radius:8px;font-weight:700;cursor:pointer}
-    .small{font-size:13px;color:var(--muted)}
-    input{padding:8px;border-radius:8px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:inherit;width:100%}
-    .grid{display:grid;grid-template-columns:1fr 300px;gap:12px}
-    .containerItem{background:rgba(255,255,255,0.02);padding:10px;border-radius:8px;margin-top:10px}
-    code{background:rgba(255,255,255,0.03);padding:2px 6px;border-radius:6px;font-size:13px}
-    .statusBox{margin-top:10px;background:rgba(255,255,255,0.02);padding:10px;border-radius:8px}
-    .muted{color:var(--muted)}
-    .danger{background:#ef4444;color:white}
+    body{font-family:Arial,Helvetica,sans-serif;background:#071026;color:#e6eef8;margin:18px}
+    .card{background:#071126;padding:16px;border-radius:10px;border:1px solid rgba(255,255,255,0.03);max-width:980px;margin:10px auto}
+    .btn{padding:8px 12px;border-radius:8px;border:none;background:#00c0ff;color:#051423;font-weight:700;cursor:pointer}
+    .small{font-size:13px;color:#9fb8d6}
+    input{padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.03);background:transparent;color:inherit}
+    .containerItem{background:rgba(255,255,255,0.02);padding:10px;border-radius:8px;margin-top:8px}
+    code{background:rgba(255,255,255,0.03);padding:2px 6px;border-radius:6px}
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="card">
+  <div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center">
+      <h2 style="margin:0">Smart Containers</h2>
+      <div id="authArea"><button id="btnSignIn" class="btn">Sign in with Google</button></div>
+    </div>
+    <p class="small">Sign in, create containers and pair a container with your device once. After pairing the device will upload fill% every 10s to Firebase.</p>
+
+    <div id="app" style="display:none">
       <div style="display:flex;justify-content:space-between;align-items:center">
         <div>
-          <h1>Smart Containers</h1>
-          <div class="lead">Sign in, create containers, and pair them with your ESP32 devices directly from the browser using Web Bluetooth.</div>
+          <div id="userEmail" style="font-weight:700"></div>
+          <div id="userUid" class="small"></div>
         </div>
-        <div id="authArea">
-          <button id="btnSignIn">Sign in with Google</button>
-        </div>
+        <div><button id="btnSignOut" class="btn" style="background:transparent;border:1px solid rgba(255,255,255,0.03);color:#00c0ff">Sign out</button></div>
       </div>
 
-      <div id="app" style="display:none; margin-top:14px">
-        <div class="row" style="justify-content:space-between">
-          <div>
-            <div style="font-weight:700" id="userName">—</div>
-            <div class="small muted" id="userUid">UID: —</div>
+      <hr/>
+
+      <div style="display:flex;gap:12px">
+        <div style="flex:1">
+          <div style="display:flex;gap:8px">
+            <input id="newName" placeholder="Container name (e.g. Rice)" />
+            <button id="btnCreate" class="btn">Create</button>
           </div>
-          <div style="text-align:right">
-            <button id="btnSignOut" style="background:transparent;border:1px solid rgba(255,255,255,0.03);color:var(--accent)">Sign out</button>
-          </div>
+          <div id="containersList" style="margin-top:12px"></div>
         </div>
 
-        <hr style="opacity:.06;margin:12px 0">
-
-        <div class="grid">
-          <div>
-            <div style="display:flex;gap:8px;align-items:center">
-              <input id="newName" placeholder="Container name (e.g. Rice)" />
-              <button id="btnCreate">Create</button>
-            </div>
-
-            <div id="containersList" style="margin-top:12px"></div>
-          </div>
-
-          <div>
-            <div class="statusBox">
-              <div style="font-weight:700">Pairing</div>
-              <div class="small muted" style="margin-top:6px">Select a container, click <em>Pair</em>, and follow the browser dialog to choose the device. Works on Chrome/Edge (desktop & Android).</div>
-              <div style="margin-top:10px">
-                <div class="small"><strong>Last pairing status:</strong></div>
-                <div id="pairStatus" style="font-weight:700;margin-top:6px">—</div>
-                <div id="pairNotify" class="small muted" style="margin-top:6px"></div>
-              </div>
-            </div>
-
-            <div class="statusBox" style="margin-top:12px">
-              <div class="small"><strong>Notes</strong></div>
-              <ul class="small muted">
-                <li>Page must be served via <code>https</code> (or localhost).</li>
-                <li>Make sure your phone has Bluetooth & Location ON.</li>
-                <li>ESP32 must advertise BLE service with the UUID in this page.</li>
-              </ul>
-            </div>
+        <div style="width:300px">
+          <div class="small" style="background:rgba(255,255,255,0.02);padding:10px;border-radius:8px">
+            <div style="font-weight:700">Pairing</div>
+            <div id="pairStatus" style="margin-top:8px">—</div>
+            <div id="pairNotify" class="small" style="margin-top:6px"></div>
           </div>
         </div>
       </div>
-
-      <div id="signedOutNote" style="margin-top:12px" class="small muted">You must sign in to manage containers and pair devices.</div>
     </div>
+
+    <div id="signedOut" class="small" style="margin-top:12px">Please sign in to see your containers.</div>
   </div>
 
-  <!-- Firebase (modular) -->
   <script type="module">
-    // Firebase modular imports
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
-    import { getDatabase, ref, onValue, set, onChildAdded, onChildChanged } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
+    import { getDatabase, ref, onValue, set, update } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
     import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
 
-    // ====== CONFIG - keep your project config here (from your project) ======
     const firebaseConfig = {
       apiKey: "AIzaSyDDkg0sjNL80TeNSV3CejbGmhZN9QxnR00",
       authDomain: "ultrasonic-c1867.firebaseapp.com",
       databaseURL: "https://ultrasonic-c1867-default-rtdb.firebaseio.com",
       projectId: "ultrasonic-c1867",
-      storageBucket: "ultrasonic-c1867.appspot.com",
+      storageBucket: "ultrasonic-c1867.firebasestorage.app",
       messagingSenderId: "754300602341",
       appId: "1:754300602341:web:9822d6453942139ef5d10c",
       measurementId: "G-4KC3E3HHB1"
     };
-    // ======================================================================
 
-    // Initialize Firebase
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
     const auth = getAuth(app);
     const provider = new GoogleAuthProvider();
 
-    // BLE UUIDs — must match ESP32 firmware
-    const SERVICE_UUID = "12345678-1234-5678-1234-56789abcdef0";
-    const CHAR_WRITE_UUID = "12345678-1234-5678-1234-56789abcdef1";
-    const CHAR_STATUS_UUID = "12345678-1234-5678-1234-56789abcdef2";
-
-    // UI elements
+    // UI
     const btnSignIn = document.getElementById('btnSignIn');
     const btnSignOut = document.getElementById('btnSignOut');
     const authArea = document.getElementById('authArea');
     const appDiv = document.getElementById('app');
-    const userNameEl = document.getElementById('userName');
-    const userUidEl = document.getElementById('userUid');
-    const newName = document.getElementById('newName');
-    const btnCreate = document.getElementById('btnCreate');
+    const userEmail = document.getElementById('userEmail');
+    const userUid = document.getElementById('userUid');
     const containersList = document.getElementById('containersList');
-    const signedOutNote = document.getElementById('signedOutNote');
+    const newName = document.getElementById('newName');
     const pairStatus = document.getElementById('pairStatus');
     const pairNotify = document.getElementById('pairNotify');
 
-    // auth actions
+    // BLE UUIDs
+    const SERVICE_UUID = "12345678-1234-5678-1234-56789abcdef0";
+    const CHAR_WRITE_UUID = "12345678-1234-5678-1234-56789abcdef1";
+    const CHAR_STATUS_UUID = "12345678-1234-5678-1234-56789abcdef2";
+
+    let currentUid = null;
+
     btnSignIn.addEventListener('click', async () => {
       try {
         await signInWithPopup(auth, provider);
@@ -149,194 +106,160 @@
       await signOut(auth);
     });
 
-    let userUid = null;
-    let containersRef = null;
-
-    // helper to make container id
-    function generateContainerID(name) {
-      const suffix = Math.random().toString(36).substring(2,7).toUpperCase();
-      const short = (name||'ct').replace(/\s+/g, '').toLowerCase().substring(0,6);
-      return short + "_" + suffix;
-    }
-
-    function clearContainersUI() {
-      containersList.innerHTML = '';
-    }
-
-    function addOrUpdateContainerUI(id, data) {
-      let el = document.getElementById('ct_' + id);
-      if (!el) {
-        el = document.createElement('div');
-        el.id = 'ct_' + id;
-        el.className = 'containerItem';
-        containersList.prepend(el);
-      }
-
-      const name = data.name || id;
-      const pct = (data.fillPercent !== undefined) ? Number(data.fillPercent).toFixed(1) + '%' : '—';
-      const paired = data.paired ? 'Yes' : 'No';
-      const last = data.lastUpdate ? (new Date(Number(data.lastUpdate)*1000)).toLocaleString() : (data.lastUpdate || '—');
-
-      el.innerHTML = `
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <div style="flex:1">
-            <div style="font-weight:700">${name}</div>
-            <div class="small muted">ID: <code>${id}</code></div>
-            <div class="small muted">Paired: ${paired} • Last: ${last}</div>
-          </div>
-          <div style="text-align:right">
-            <div style="font-size:28px;font-weight:800">${pct}</div>
-            <div class="small muted">fill</div>
-            <div style="margin-top:8px">
-              <button data-id="${id}" class="btnPair">Pair</button>
-            </div>
-          </div>
-        </div>
-      `;
-
-      // attach event
-      const btn = el.querySelector('.btnPair');
-      btn.onclick = () => {
-        startPairing(id, name);
-      };
-    }
-
-    // When auth state changes
     onAuthStateChanged(auth, user => {
       if (user) {
-        userUid = user.uid;
-        signedOutNote.style.display = 'none';
+        currentUid = user.uid;
+        userEmail.textContent = user.email || user.displayName;
+        userUid.textContent = "UID: " + user.uid;
+        document.getElementById('signedOut').style.display = 'none';
         authArea.style.display = 'none';
         appDiv.style.display = 'block';
-        userNameEl.textContent = user.email || user.displayName || 'User';
-        userUidEl.textContent = 'UID: ' + user.uid;
-
-        // attach DB listeners
-        containersRef = ref(db, 'users/' + userUid + '/containers');
-        clearContainersUI();
-
-        // onValue to list initial and updates
-        onValue(containersRef, snapshot => {
-          clearContainersUI();
-          if (!snapshot.exists()) return;
-          snapshot.forEach(child => {
-            addOrUpdateContainerUI(child.key, child.val() || {});
-          });
-        });
-
+        listenContainers(user.uid);
       } else {
-        userUid = null;
-        authArea.style.display = 'block';
+        currentUid = null;
         appDiv.style.display = 'none';
-        signedOutNote.style.display = 'block';
-        clearContainersUI();
+        authArea.style.display = 'block';
+        document.getElementById('signedOut').style.display = 'block';
+        containersList.innerHTML = '';
       }
     });
 
+    // Generate container id
+    function generateId(name) {
+      const s = (name||'ct').replace(/\s+/g,'').toLowerCase().substring(0,6);
+      return s + "_" + Math.random().toString(36).substring(2,7).toUpperCase();
+    }
+
     // Create container
-    btnCreate.addEventListener('click', async () => {
-      if (!userUid) { alert('Sign in first'); return; }
-      const name = (newName.value || 'container').trim();
-      if (name.length === 0) return;
-      const id = generateContainerID(name);
-      const now = Date.now();
-      const obj = {
-        name: name,
-        paired: false,
-        fillPercent: 0,
-        lastUpdate: 0,
-        created: now
-      };
+    document.getElementById('btnCreate').addEventListener('click', async () => {
+      if (!currentUid) return alert('Sign in first');
+      const name = newName.value.trim() || 'container';
+      const id = generateId(name);
+      const obj = { name: name, paired: false, fillPercent: 0, lastUpdate: 0, created: Date.now() };
       try {
-        await set(ref(db, 'users/' + userUid + '/containers/' + id), obj);
+        await set(ref(db, 'users/' + currentUid + '/containers/' + id), obj);
         newName.value = '';
-        alert('Created container: ' + id + '\nNow click Pair on that container to send onboarding to the device.');
       } catch (e) {
         alert('Create failed: ' + e.message);
       }
     });
 
-    // -------------------------
-    // Web Bluetooth pairing
-    // -------------------------
-   // -------------------------
-async function startPairing(containerId, containerName) {
-  if (!userUid) { 
-    alert('Sign in first'); 
-    return; 
-  }
-
-  pairStatus.textContent = 'Opening Bluetooth chooser...';
-  pairNotify.textContent = '';
-
-  try {
-    // STEP 1 — MUST happen while still in button click handler
-    // (This keeps Chrome happy)
-    const device = await navigator.bluetooth.requestDevice({
-      filters: [{ services: [SERVICE_UUID] }],
-      optionalServices: [SERVICE_UUID]
-    });
-
-    pairStatus.textContent = 'Connecting to device...';
-    const server = await device.gatt.connect();
-
-    const service = await server.getPrimaryService(SERVICE_UUID);
-    const writeChar = await service.getCharacteristic(CHAR_WRITE_UUID);
-    const statusChar = await service.getCharacteristic(CHAR_STATUS_UUID);
-
-    // Subscribe to notifications
-    await statusChar.startNotifications();
-    statusChar.addEventListener('characteristicvaluechanged', (evt) => {
-      const decoded = new TextDecoder().decode(evt.target.value);
-      pairNotify.textContent = decoded;
-      console.log("Status:", decoded);
-
-      if (decoded.includes("WIFI_OK")) {
-        set(ref(db, `users/${userUid}/containers/${containerId}/paired`), true);
-        pairStatus.textContent = 'Paired successfully!';
-      }
-    });
-
-    // STEP 2 — AFTER Bluetooth is allowed, NOW we ask for WiFi data
-    const ssid = prompt('Enter WiFi SSID:');
-    if (!ssid) return;
-
-    const password = prompt('Enter WiFi password:');
-    if (password === null) return;
-
-    pairStatus.textContent = 'Sending onboarding data...';
-
-    // Build onboarding string
-    const payload = `${ssid};${password};${userUid};${containerId}`;
-    const enc = new TextEncoder();
-    const bytes = enc.encode(payload);
-
-    // Send to ESP32
-    await writeChar.writeValue(bytes);
-
-    pairStatus.textContent = 'Onboarding data sent. Waiting for device...';
-    alert("Data sent! Watch the pairing status box on the right.");
-
-  } catch (err) {
-    console.error(err);
-    pairStatus.textContent = 'Pairing failed';
-    pairNotify.textContent = err.message || err;
-    alert("Pairing failed: " + (err.message || err));
-  }
-}
-
-
-    // Feature detection for Web Bluetooth
-    if (!('bluetooth' in navigator)) {
-      // show a warning card
-      const warning = document.createElement('div');
-      warning.className = 'wrap';
-      warning.innerHTML = `<div class="card"><div class="small">Web Bluetooth is not available in this browser. Use Chrome or Edge on Android or desktop. iOS Safari is not supported.</div></div>`;
-      document.body.prepend(warning);
+    // Listen containers
+    function listenContainers(uid) {
+      const topRef = ref(db, 'users/' + uid + '/containers');
+      onValue(topRef, snapshot => {
+        containersList.innerHTML = '';
+        if (!snapshot.exists()) return;
+        snapshot.forEach(child => {
+          renderContainer(child.key, child.val());
+        });
+      });
     }
 
+    function renderContainer(id, data) {
+      const el = document.createElement('div');
+      el.className = 'containerItem';
+      const name = data.name || id;
+      const filled = (data.fillPercent !== undefined) ? Number(data.fillPercent).toFixed(1) + '%' : '—';
+      const paired = data.paired ? 'Yes' : 'No';
+      const last = data.lastUpdate ? new Date(Number(data.lastUpdate) * 1000).toLocaleString() : '—';
+
+      el.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <div style="flex:1">
+            <div style="font-weight:700">${name}</div>
+            <div class="small">ID: <code>${id}</code></div>
+            <div class="small">Paired: ${paired} • Last: ${last}</div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:28px;font-weight:800">${filled}</div>
+            <div class="small">fill</div>
+            <div style="margin-top:8px"></div>
+          </div>
+        </div>
+      `;
+
+      // Add pair button if not paired
+      if (!data.paired) {
+        const btn = document.createElement('button');
+        btn.className = 'btn';
+        btn.textContent = 'Pair';
+        btn.style.marginTop = '10px';
+        btn.onclick = () => pairContainer(id, name);
+        el.appendChild(btn);
+      }
+
+      containersList.prepend(el);
+    }
+
+    // Pairing flow: requestDevice() must be called inside the click handler
+    async function pairContainer(containerId, containerName) {
+      if (!currentUid) return alert('Sign in first');
+
+      pairStatus.textContent = 'Opening Bluetooth chooser...';
+      pairNotify.textContent = '';
+
+      try {
+        // (A) requestDevice MUST be inside the user gesture
+        const device = await navigator.bluetooth.requestDevice({
+          filters: [{ services: [SERVICE_UUID] }],
+          optionalServices: [SERVICE_UUID]
+        });
+
+        pairStatus.textContent = 'Connecting to device...';
+        const server = await device.gatt.connect();
+        const service = await server.getPrimaryService(SERVICE_UUID);
+        const writeChar = await service.getCharacteristic(CHAR_WRITE_UUID);
+        const statusChar = await service.getCharacteristic(CHAR_STATUS_UUID);
+
+        // Subscribe to notifications
+        await statusChar.startNotifications();
+        statusChar.addEventListener('characteristicvaluechanged', (evt) => {
+          const s = new TextDecoder().decode(evt.target.value);
+          pairNotify.textContent = s;
+          console.log('status notify', s);
+          if (s.includes('WIFI_OK')) {
+            // mark paired true in DB
+            update(ref(db, 'users/' + currentUid + '/containers/' + containerId), { paired: true })
+              .catch(err => console.warn('Failed to update paired flag:', err));
+            pairStatus.textContent = 'Paired (WIFI_OK)';
+          } else if (s.includes('WIFI_FAIL')) {
+            pairStatus.textContent = 'Device WiFi failed';
+          }
+        });
+
+        // (B) After device selected, now ask for WiFi info (doesn't break gesture)
+        const ssid = prompt('Enter WiFi SSID (home network):');
+        if (!ssid) {
+          pairStatus.textContent = 'WiFi SSID not provided';
+          return;
+        }
+        const password = prompt('Enter WiFi password (leave blank for open):');
+        if (password === null) {
+          pairStatus.textContent = 'WiFi password cancelled';
+          return;
+        }
+
+        // Send onboarding payload: SSID;PASSWORD;UID;CONTAINER_ID
+        const payload = `${ssid};${password};${currentUid};${containerId}`;
+        const encoded = new TextEncoder().encode(payload);
+        await writeChar.writeValue(encoded);
+
+        pairStatus.textContent = 'Onboarding data sent — waiting for device...';
+        alert('Onboarding sent. Wait for device to report WIFI_OK.');
+
+      } catch (err) {
+        console.error(err);
+        pairStatus.textContent = 'Pairing failed';
+        pairNotify.textContent = err.message || err;
+        alert('Pairing failed: ' + (err.message || err));
+      }
+    }
+
+    // Feature detection
+    if (!('bluetooth' in navigator)) {
+      document.body.insertAdjacentHTML('afterbegin', '<div style="background:#601010;padding:10px;color:#fff">Web Bluetooth not supported in this browser. Use Chrome/Edge on Android or desktop.</div>');
+    }
   </script>
 </body>
 </html>
-
-
