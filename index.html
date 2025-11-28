@@ -1,197 +1,197 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Smart Container Dashboard</title>
-<style>
-body{font-family:Arial;background:#071026;color:#fff;padding:16px}
-.card{background:#0a1326;padding:16px;border-radius:12px;max-width:900px;margin:auto}
-.btn{padding:8px 14px;border:none;border-radius:8px;font-weight:700;cursor:pointer;background:#00c0ff;color:#02121f}
-.small{font-size:13px;color:#9fb8d6}
-.item{background:#0f1b33;padding:12px;margin-top:10px;border-radius:8px}
-input{padding:8px;border-radius:6px;border:none;margin-right:8px;background:#0f1b33;color:white;width:100%}
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Container Fill — Live</title>
+
+  <style>
+    :root{
+      --bg:#0f1724;
+      --card:#0b1220;
+      --accent:#00c0ff;
+      --good:#16a34a;
+      --warn:#f59e0b;
+      --bad:#ef4444;
+      --glass: rgba(255,255,255,0.03);
+    }
+    html,body{height:100%;margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;}
+    body{display:grid;place-items:center;background:linear-gradient(180deg,#021021 0%, #071826 100%);color:#e6eef8}
+    .card{width:min(820px,95%);padding:28px;border-radius:14px;background:linear-gradient(180deg,var(--card),#071126);box-shadow:0 8px 30px rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.03)}
+    h1{margin:0 0 8px 0;font-weight:600;letter-spacing:-0.5px}
+    p.lead{margin:0 0 18px 0;color:#a8c0d8}
+    .big {
+      font-size:80px;
+      font-weight:800;
+      line-height:0.9;
+      letter-spacing:-1px;
+      display:flex;
+      align-items:center;
+      gap:14px;
+    }
+    .unit {font-size:28px;opacity:0.9;font-weight:700}
+    .meter {
+      margin-top:18px;
+      height:18px;
+      width:100%;
+      background:var(--glass);
+      border-radius:999px;
+      overflow:hidden;
+      border:1px solid rgba(255,255,255,0.03);
+    }
+    .meter > span {
+      display:block;height:100%;width:0%;
+      background:linear-gradient(90deg,var(--accent),#6ee7b7);
+      border-radius:999px;
+      transition: width 600ms ease, background 300ms ease;
+    }
+    .meta {margin-top:12px;color:#9fb8d6;font-size:14px;}
+    .status {float:right;font-weight:600;font-size:14px}
+    .footer {margin-top:18px;color:#90b0cf;font-size:13px}
+    .error{color:var(--bad)}
+    .ok{color:var(--good)}
+  </style>
 </head>
 <body>
-<div class="card">
-<h2>Smart Container Dashboard</h2>
-<p class="small">Pair once. ESP32 uploads fill% every 10 seconds.</p>
-
-<div id="auth">
- <button id="btnLogin" class="btn">Sign in with Google</button>
-</div>
-
-<div id="app" style="display:none">
- <div style="display:flex;justify-content:space-between">
-   <div>
-     <div id="email"></div>
-     <div id="uid" class="small"></div>
-   </div>
-   <button id="btnLogout" class="btn" style="background:none;border:1px solid #00c0ff;color:#00c0ff">Log out</button>
- </div>
-
- <hr/>
-
- <div style="display:flex;gap:12px">
-   <input id="name" placeholder="Container name"/>
-   <button id="create" class="btn">Create</button>
- </div>
-
- <div id="list" style="margin-top:12px"></div>
-
- <h3>Pairing</h3>
- <div id="pairStatus" class="small">—</div>
- <div id="pairNote" class="small"></div>
-</div>
-</div>
-
-<script type="module">
-import {initializeApp} from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
-import {getAuth,GoogleAuthProvider,signInWithPopup,signOut,onAuthStateChanged} 
-  from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
-import {getDatabase,ref,set,onValue,update}
-  from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
-
-const firebaseConfig = {
- apiKey: "AIzaSyDDkg0sjNL80TeNSV3CejbGmhZN9QxnR00",
- authDomain: "ultrasonic-c1867.firebaseapp.com",
- databaseURL: "https://ultrasonic-c1867-default-rtdb.firebaseio.com",
- projectId: "ultrasonic-c1867",
- storageBucket: "ultrasonic-c1867.firebasestorage.app",
- messagingSenderId: "754300602341",
- appId: "1:754300602341:web:9822d6453942139ef5d10c",
- measurementId: "G-4KC3E3HHB1"
-};
-
-const app = initializeApp(firebaseConfig);
-const auth = getAuth();
-const db = getDatabase();
-
-const SERVICE_UUID="12345678-1234-5678-1234-56789abcdef0";
-const WRITE_UUID="12345678-1234-5678-1234-56789abcdef1";
-const STATUS_UUID="12345678-1234-5678-1234-56789abcdef2";
-
-const authDiv=document.getElementById("auth");
-const appDiv=document.getElementById("app");
-const email=document.getElementById("email");
-const uidEl=document.getElementById("uid");
-const list=document.getElementById("list");
-const pairStatus=document.getElementById("pairStatus");
-const pairNote=document.getElementById("pairNote");
-
-document.getElementById("btnLogin").onclick=()=>signInWithPopup(auth,new GoogleAuthProvider());
-document.getElementById("btnLogout").onclick=()=>signOut(auth);
-
-onAuthStateChanged(auth,user=>{
- if(!user){
-   authDiv.style.display="block";
-   appDiv.style.display="none";
-   return;
- }
- authDiv.style.display="none";
- appDiv.style.display="block";
-
- email.textContent=user.email;
- uidEl.textContent="UID: "+user.uid;
- loadContainers(user.uid);
-});
-
-// Load containers
-function loadContainers(uid){
- const r=ref(db,"users/"+uid+"/containers");
- onValue(r,snap=>{
-   list.innerHTML="";
-   if(!snap.exists())return;
-   snap.forEach(c=>{
-     addItem(uid,c.key,c.val());
-   });
- });
-}
-
-// Render item
-function addItem(uid,id,data){
- const el=document.createElement("div");
- el.className="item";
- const pct=(data.fillPercent!==undefined)?data.fillPercent.toFixed(1)+"%":"—";
- el.innerHTML=`
-  <div style="display:flex;justify-content:space-between">
-    <div>
-      <b>${data.name}</b>
-      <div class="small">ID: ${id}</div>
-      <div class="small">Paired: ${data.paired}</div>
+  <div class="card" role="main">
+    <div style="display:flex;align-items:center;justify-content:space-between;">
+      <div>
+        <h1>Container Fill — Live</h1>
+        <p class="lead">Realtime percentage from Firebase Realtime Database (<code>/container/current</code>).</p>
+      </div>
+      <div class="status" id="status">Connecting…</div>
     </div>
-    <div style="font-size:26px">${pct}</div>
+
+    <div style="display:flex;align-items:center;gap:24px;margin-top:18px;">
+      <div>
+        <div class="big">
+          <div id="percent" aria-live="polite">--.-</div>
+          <div class="unit">%</div>
+        </div>
+        <div class="meta">Last update: <span id="lastUpdate">—</span></div>
+      </div>
+
+      <div style="flex:1">
+        <div class="meter" aria-hidden="true">
+          <span id="meterFill" style="width:0%"></span>
+        </div>
+        <div class="footer">Database path: <code>/container/current</code></div>
+      </div>
+    </div>
+
+    <div id="log" style="margin-top:18px;color:#9fb8d6;font-size:13px"></div>
   </div>
- `;
- if(!data.paired){
-   const b=document.createElement("button");
-   b.className="btn";
-   b.textContent="Pair";
-   b.style.marginTop="10px";
-   b.onclick=()=>pair(uid,id);
-   el.appendChild(b);
- }
- list.appendChild(el);
-}
 
-// Create container
-document.getElementById("create").onclick=()=>{
- const n=document.getElementById("name").value.trim();
- if(!n)return alert("Enter name");
- const id=n.toLowerCase().replace(/\s+/g,"").substring(0,6)+"_"+Math.random().toString(36).substr(2,5);
- set(ref(db,"users/"+auth.currentUser.uid+"/containers/"+id),{
-   name:n,
-   paired:false,
-   fillPercent:0,
-   lastUpdate:0
- });
-};
+  <!-- Firebase (modular v9) via CDN -->
+  <script type="module">
+    // Firebase SDK imports (modular)
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
+    import {
+      getDatabase,
+      ref,
+      onValue,
+      connectDatabaseEmulator
+    } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
 
-// Pair function
-async function pair(uid,id){
- pairStatus.textContent="Opening Bluetooth chooser...";
- pairNote.textContent="";
- try{
-   const dev=await navigator.bluetooth.requestDevice({
-     filters:[{services:[SERVICE_UUID]}],
-     optionalServices:[SERVICE_UUID]
-   });
+    // ---- YOUR FIREBASE CONFIG ----
+    const firebaseConfig = {
+      apiKey: "AIzaSyDDkg0sjNL80TeNSV3CejbGmhZN9QxnR00",
+      authDomain: "ultrasonic-c1867.firebaseapp.com",
+      databaseURL: "https://ultrasonic-c1867-default-rtdb.firebaseio.com",
+      projectId: "ultrasonic-c1867",
+      storageBucket: "ultrasonic-c1867.appspot.com",
+      messagingSenderId: "754300602341",
+      appId: "1:754300602341:web:9822d6453942139ef5d10c",
+      measurementId: "G-4KC3E3HHB1"
+    };
+    // -------------------------------
 
-   pairStatus.textContent="Connecting...";
-   const server=await dev.gatt.connect();
-   const svc=await server.getPrimaryService(SERVICE_UUID);
-   const writeChar=await svc.getCharacteristic(WRITE_UUID);
-   const statusChar=await svc.getCharacteristic(STATUS_UUID);
+    // UI elements
+    const statusEl = document.getElementById('status');
+    const percentEl = document.getElementById('percent');
+    const meterEl = document.getElementById('meterFill');
+    const lastEl = document.getElementById('lastUpdate');
+    const logEl = document.getElementById('log');
 
-   await statusChar.startNotifications();
-   statusChar.oncharacteristicvaluechanged=e=>{
-     const msg=new TextDecoder().decode(e.target.value);
-     pairNote.textContent=msg;
-     if(msg.includes("WIFI_OK")){
-       update(ref(db,"users/"+uid+"/containers/"+id),{paired:true});
-       pairStatus.textContent="Paired ✓";
-     }
-   };
+    function setStatus(text, cls='') {
+      statusEl.textContent = text;
+      statusEl.className = cls;
+    }
 
-   const ssid=prompt("WiFi SSID:");
-   if(!ssid)return;
-   const pass=prompt("WiFi password:");
-   if(pass===null)return;
+    function addLog(msg) {
+      const t = new Date().toLocaleTimeString();
+      logEl.textContent = `[${t}] ${msg}\n` + logEl.textContent;
+    }
 
-   const payload=`${ssid};${pass};${uid};${id}`;
-   await writeChar.writeValue(new TextEncoder().encode(payload));
+    try {
+      const app = initializeApp(firebaseConfig);
+      const db = getDatabase(app);
 
-   pairStatus.textContent="Sent WiFi data... waiting for WIFI_OK";
- }catch(err){
-   pairStatus.textContent="Error";
-   alert(err);
- }
-}
+      // Path we listen to
+      const currentRef = ref(db, '/container/current');
 
-if(!navigator.bluetooth){
- document.body.insertAdjacentHTML("afterbegin","<div style='background:#600;padding:10px'>Web Bluetooth not supported</div>");
-}
-</script>
+      setStatus('Connected (listening)', 'ok');
+      addLog('Initialized Firebase, attaching realtime listener.');
+
+      // onValue triggers whenever the data changes (realtime)
+      onValue(currentRef, (snapshot) => {
+        if (!snapshot.exists()) {
+          setStatus('No data', 'error');
+          percentEl.textContent = '--.-';
+          meterEl.style.width = '0%';
+          lastEl.textContent = '—';
+          addLog('No /container/current value found (snapshot empty).');
+          return;
+        }
+
+        const value = snapshot.val();
+        // value might be a number or an object; try to coerce
+        let pct = Number(value);
+        if (!isFinite(pct)) {
+          // if value isn't a simple number, try to read property 'fillPercent'
+          if (value && typeof value === 'object' && value.fillPercent !== undefined) {
+            pct = Number(value.fillPercent);
+          } else {
+            setStatus('Bad data', 'error');
+            addLog('Received non-numeric value: ' + JSON.stringify(value));
+            return;
+          }
+        }
+
+        // sanitize
+        if (pct < 0) pct = 0;
+        if (pct > 100) pct = 100;
+
+        // update UI
+        percentEl.textContent = pct.toFixed(1);
+        meterEl.style.width = pct + '%';
+        lastEl.textContent = new Date().toLocaleString();
+        setStatus('Live', 'ok');
+        addLog('Updated: ' + pct.toFixed(1) + ' %');
+      }, (err) => {
+        setStatus('Listener error', 'error');
+        addLog('Listener error: ' + err.message);
+        console.error(err);
+      });
+
+    } catch (e) {
+      setStatus('Init error', 'error');
+      addLog('Firebase init failed: ' + (e && e.message ? e.message : e));
+      console.error(e);
+    }
+
+    // Helpful note: if database rules require authentication for reads,
+    // you'll see permission errors in console/log. For quick testing,
+    // enable read access in the Realtime DB rules:
+    //
+    // {
+    //   "rules": {
+    //     ".read": true,
+    //     ".write": true
+    //   }
+    // }
+    //
+    // (Remember to tighten rules before production.)
+  </script>
 </body>
 </html>
