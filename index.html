@@ -3,97 +3,68 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Container Fill — Live</title>
-
+  <title>Smart Container - Pair & Dashboard</title>
   <style>
-    :root{
-      --bg:#0f1724;
-      --card:#0b1220;
-      --accent:#00c0ff;
-      --good:#16a34a;
-      --warn:#f59e0b;
-      --bad:#ef4444;
-      --glass: rgba(255,255,255,0.03);
-    }
-    html,body{height:100%;margin:0;font-family:Inter,system-ui,-apple-system,Segoe UI,Roboto,"Helvetica Neue",Arial;}
-    body{display:grid;place-items:center;background:linear-gradient(180deg,#021021 0%, #071826 100%);color:#e6eef8}
-    .card{width:min(820px,95%);padding:28px;border-radius:14px;background:linear-gradient(180deg,var(--card),#071126);box-shadow:0 8px 30px rgba(0,0,0,0.6);border:1px solid rgba(255,255,255,0.03)}
-    h1{margin:0 0 8px 0;font-weight:600;letter-spacing:-0.5px}
-    p.lead{margin:0 0 18px 0;color:#a8c0d8}
-    .big {
-      font-size:80px;
-      font-weight:800;
-      line-height:0.9;
-      letter-spacing:-1px;
-      display:flex;
-      align-items:center;
-      gap:14px;
-    }
-    .unit {font-size:28px;opacity:0.9;font-weight:700}
-    .meter {
-      margin-top:18px;
-      height:18px;
-      width:100%;
-      background:var(--glass);
-      border-radius:999px;
-      overflow:hidden;
-      border:1px solid rgba(255,255,255,0.03);
-    }
-    .meter > span {
-      display:block;height:100%;width:0%;
-      background:linear-gradient(90deg,var(--accent),#6ee7b7);
-      border-radius:999px;
-      transition: width 600ms ease, background 300ms ease;
-    }
-    .meta {margin-top:12px;color:#9fb8d6;font-size:14px;}
-    .status {float:right;font-weight:600;font-size:14px}
-    .footer {margin-top:18px;color:#90b0cf;font-size:13px}
-    .error{color:var(--bad)}
-    .ok{color:var(--good)}
+    body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:18px;background:#f6fafc;color:#04263a}
+    .card{background:white;padding:16px;border-radius:8px;box-shadow:0 6px 18px rgba(2,6,23,0.08);max-width:900px;margin:12px auto}
+    button{padding:8px 12px;border-radius:6px;border:0;background:#0366d6;color:white;cursor:pointer}
+    input{padding:8px;border-radius:6px;border:1px solid #d1e3f0;width:100%}
+    label{display:block;margin-top:8px;font-weight:600}
+    .row{display:flex;gap:12px}
+    .col{flex:1}
+    pre{background:#f3f7fb;padding:8px;border-radius:6px;overflow:auto}
   </style>
 </head>
 <body>
-  <div class="card" role="main">
-    <div style="display:flex;align-items:center;justify-content:space-between;">
-      <div>
-        <h1>Container Fill — Live</h1>
-        <p class="lead">Realtime percentage from Firebase Realtime Database (<code>/container/current</code>).</p>
-      </div>
-      <div class="status" id="status">Connecting…</div>
-    </div>
+  <div class="card">
+    <h2>Smart Container — Pair & Dashboard</h2>
+    <p>Login with Google, then click <b>Add Smart Container</b> to start BLE provisioning.</p>
 
-    <div style="display:flex;align-items:center;gap:24px;margin-top:18px;">
-      <div>
-        <div class="big">
-          <div id="percent" aria-live="polite">--.-</div>
-          <div class="unit">%</div>
-        </div>
-        <div class="meta">Last update: <span id="lastUpdate">—</span></div>
-      </div>
-
-      <div style="flex:1">
-        <div class="meter" aria-hidden="true">
-          <span id="meterFill" style="width:0%"></span>
-        </div>
-        <div class="footer">Database path: <code>/container/current</code></div>
+    <div id="authArea">
+      <div id="userBox">
+        <button id="loginBtn">Sign in with Google</button>
+        <button id="logoutBtn" style="display:none">Sign out</button>
+        <div id="userInfo" style="margin-top:12px"></div>
       </div>
     </div>
 
-    <div id="log" style="margin-top:18px;color:#9fb8d6;font-size:13px"></div>
+    <hr/>
+
+    <div id="pairArea" style="display:none">
+      <h3>Pair a new container</h3>
+      <label>Wi-Fi SSID
+        <input id="ssid" placeholder="Your Wi-Fi SSID"/>
+      </label>
+      <label>Wi-Fi Password
+        <input id="pass" placeholder="Wi-Fi password (sent over BLE)"/>
+      </label>
+
+      <div style="margin-top:12px">
+        <button id="scanBtn">Add Smart Container (BLE scan)</button>
+      </div>
+
+      <div id="pairLog" style="margin-top:12px"><pre id="log">Ready.</pre></div>
+    </div>
+
+    <hr/>
+
+    <div id="dashboardArea" style="display:none">
+      <h3>Your Containers</h3>
+      <div id="containers"></div>
+    </div>
   </div>
 
-  <!-- Firebase (modular v9) via CDN -->
+  <!-- Firebase SDK (modular) -->
   <script type="module">
-    // Firebase SDK imports (modular)
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
     import {
-      getDatabase,
-      ref,
-      onValue,
-      connectDatabaseEmulator
+      getDatabase, ref, onValue, set, push, remove, get, child
     } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
+    import {
+      getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged
+    } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
 
-    // ---- YOUR FIREBASE CONFIG ----
+    // ---- use your Firebase config (from your uploaded file) ----
     const firebaseConfig = {
       apiKey: "AIzaSyDDkg0sjNL80TeNSV3CejbGmhZN9QxnR00",
       authDomain: "ultrasonic-c1867.firebaseapp.com",
@@ -104,94 +75,218 @@
       appId: "1:754300602341:web:9822d6453942139ef5d10c",
       measurementId: "G-4KC3E3HHB1"
     };
-    // -------------------------------
+    // ----------------------------------------------------------
 
     // UI elements
-    const statusEl = document.getElementById('status');
-    const percentEl = document.getElementById('percent');
-    const meterEl = document.getElementById('meterFill');
-    const lastEl = document.getElementById('lastUpdate');
+    const loginBtn = document.getElementById('loginBtn');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const userInfo = document.getElementById('userInfo');
+    const pairArea = document.getElementById('pairArea');
+    const dashboardArea = document.getElementById('dashboardArea');
+    const scanBtn = document.getElementById('scanBtn');
     const logEl = document.getElementById('log');
+    const ssidEl = document.getElementById('ssid');
+    const passEl = document.getElementById('pass');
+    const containersDiv = document.getElementById('containers');
 
-    function setStatus(text, cls='') {
-      statusEl.textContent = text;
-      statusEl.className = cls;
+    function log(msg){ const t = new Date().toLocaleTimeString(); logEl.textContent = `[${t}] ${msg}\n` + logEl.textContent; }
+
+    // init firebase
+    const app = initializeApp(firebaseConfig);
+    const db = getDatabase(app);
+    const auth = getAuth(app);
+
+    // auth handlers
+    loginBtn.onclick = async () => {
+      const provider = new GoogleAuthProvider();
+      try {
+        await signInWithPopup(auth, provider);
+      } catch (e) { alert('Sign-in failed: ' + e.message); }
+    };
+    logoutBtn.onclick = async () => { await signOut(auth); };
+
+    onAuthStateChanged(auth, user => {
+      if (user) {
+        loginBtn.style.display = 'none';
+        logoutBtn.style.display = 'inline-block';
+        userInfo.textContent = `Signed in: ${user.displayName} (${user.email})`;
+        pairArea.style.display = 'block';
+        dashboardArea.style.display = 'block';
+        startDashboardForUser(user.uid);
+      } else {
+        loginBtn.style.display = 'inline-block';
+        logoutBtn.style.display = 'none';
+        userInfo.textContent = '';
+        pairArea.style.display = 'none';
+        dashboardArea.style.display = 'none';
+        containersDiv.innerHTML = '';
+      }
+    });
+
+    // Utility: generate simple random claim token (UUID-like)
+    function makeClaimToken(){
+      return 'ct-' + ([1,1,1,1].map(()=> Math.random().toString(16).slice(2,10)).join('-'));
     }
 
-    function addLog(msg) {
-      const t = new Date().toLocaleTimeString();
-      logEl.textContent = `[${t}] ${msg}\n` + logEl.textContent;
-    }
+    // BLE provisioning constants (must match ESP32 service + characteristic UUIDs)
+    const SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e'; // example NUS-like
+    const CHAR_SSID_UUID = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
+    const CHAR_PASS_UUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
+    const CHAR_TOKEN_UUID = '6e400004-b5a3-f393-e0a9-e50e24dcca9e';
+    const CHAR_INFO_UUID = '6e400005-b5a3-f393-e0a9-e50e24dcca9e'; // read deviceId
 
-    try {
-      const app = initializeApp(firebaseConfig);
-      const db = getDatabase(app);
+    // When user clicks scan -> connect flow
+    scanBtn.onclick = async () => {
+      if (!auth.currentUser) { alert('Sign in first'); return; }
+      const ssid = ssidEl.value.trim();
+      const pwd = passEl.value;
+      if (!ssid) { alert('Enter Wi-Fi SSID'); return; }
 
-      // Path we listen to
-      const currentRef = ref(db, '/container/current');
+      log('Starting BLE scan (choose your device when prompted)...');
+      try {
+        const device = await navigator.bluetooth.requestDevice({
+          filters: [{services:[SERVICE_UUID]}],
+          optionalServices: [SERVICE_UUID]
+        });
+        log('Selected device: ' + device.name);
+        const server = await device.gatt.connect();
+        const service = await server.getPrimaryService(SERVICE_UUID);
 
-      setStatus('Connected (listening)', 'ok');
-      addLog('Initialized Firebase, attaching realtime listener.');
+        // read device info (deviceId)
+        let deviceId = 'unknown-device';
+        try {
+          const infoChar = await service.getCharacteristic(CHAR_INFO_UUID);
+          const infoVal = await infoChar.readValue();
+          deviceId = new TextDecoder().decode(infoVal) || deviceId;
+          log('Device UID: ' + deviceId);
+        } catch(e) { log('Could not read device info: ' + e.message); }
 
-      // onValue triggers whenever the data changes (realtime)
-      onValue(currentRef, (snapshot) => {
-        if (!snapshot.exists()) {
-          setStatus('No data', 'error');
-          percentEl.textContent = '--.-';
-          meterEl.style.width = '0%';
-          lastEl.textContent = '—';
-          addLog('No /container/current value found (snapshot empty).');
-          return;
-        }
+        // write SSID
+        const ssidChar = await service.getCharacteristic(CHAR_SSID_UUID);
+        await ssidChar.writeValue(new TextEncoder().encode(ssid));
+        log('Sent SSID over BLE');
 
-        const value = snapshot.val();
-        // value might be a number or an object; try to coerce
-        let pct = Number(value);
-        if (!isFinite(pct)) {
-          // if value isn't a simple number, try to read property 'fillPercent'
-          if (value && typeof value === 'object' && value.fillPercent !== undefined) {
-            pct = Number(value.fillPercent);
-          } else {
-            setStatus('Bad data', 'error');
-            addLog('Received non-numeric value: ' + JSON.stringify(value));
+        // write PASS (if empty, send empty string)
+        const passChar = await service.getCharacteristic(CHAR_PASS_UUID);
+        await passChar.writeValue(new TextEncoder().encode(pwd || ''));
+        log('Sent Wi-Fi password over BLE');
+
+        // write claim token
+        const claimToken = makeClaimToken();
+        const tokenChar = await service.getCharacteristic(CHAR_TOKEN_UUID);
+        await tokenChar.writeValue(new TextEncoder().encode(claimToken));
+        log('Sent claim token: ' + claimToken);
+
+        // Now wait for the device to appear in /unclaimed/<deviceId> with matching token
+        log('Waiting for device to register itself in Firebase (/unclaimed/' + deviceId + ')');
+        await waitForClaim(deviceId, claimToken, auth.currentUser.uid);
+        log('Device successfully claimed and linked to your account.');
+
+        // disconnect BLE
+        try { server.disconnect(); } catch(e){}
+      } catch (err) {
+        console.error(err);
+        alert('BLE provisioning failed: ' + (err.message || err));
+        log('BLE provisioning error: ' + (err.message || err));
+      }
+    };
+
+    // Wait for device write to /unclaimed/<deviceId> with the expected token,
+    // then move the entry to /users/<uid>/containers/<deviceId>
+    function waitForClaim(deviceId, claimToken, uid){
+      return new Promise((resolve, reject) => {
+        const unclaimedRef = ref(db, '/unclaimed/' + deviceId);
+        const timeout = setTimeout(()=> {
+          // stop listening after 2 minutes
+          offListener();
+          reject(new Error('Timed out waiting for device to register.'));
+        }, 120000);
+
+        function offListener(){ onVal && onVal(); clearTimeout(timeout); }
+
+        // listen for unclaimed/<deviceId>
+        let onVal = onValue(unclaimedRef, async (snap) => {
+          if (!snap.exists()) return;
+          const data = snap.val();
+          if (!data || data.claimToken !== claimToken) {
+            log('Found unclaimed entry but token mismatch or missing. Waiting...');
             return;
           }
-        }
-
-        // sanitize
-        if (pct < 0) pct = 0;
-        if (pct > 100) pct = 100;
-
-        // update UI
-        percentEl.textContent = pct.toFixed(1);
-        meterEl.style.width = pct + '%';
-        lastEl.textContent = new Date().toLocaleString();
-        setStatus('Live', 'ok');
-        addLog('Updated: ' + pct.toFixed(1) + ' %');
-      }, (err) => {
-        setStatus('Listener error', 'error');
-        addLog('Listener error: ' + err.message);
-        console.error(err);
+          // token matches -> move under user
+          try {
+            const userPath = '/users/' + uid + '/containers/' + deviceId;
+            await set(ref(db, userPath), data);
+            await remove(unclaimedRef);
+            log('Moved device to ' + userPath);
+            offListener();
+            resolve();
+          } catch (e) {
+            offListener();
+            reject(e);
+          }
+        }, (err) => {
+          offListener();
+          reject(err);
+        });
       });
-
-    } catch (e) {
-      setStatus('Init error', 'error');
-      addLog('Firebase init failed: ' + (e && e.message ? e.message : e));
-      console.error(e);
     }
 
-    // Helpful note: if database rules require authentication for reads,
-    // you'll see permission errors in console/log. For quick testing,
-    // enable read access in the Realtime DB rules:
-    //
-    // {
-    //   "rules": {
-    //     ".read": true,
-    //     ".write": true
-    //   }
-    // }
-    //
-    // (Remember to tighten rules before production.)
+    // DASHBOARD: show user containers and live percent
+    function startDashboardForUser(uid){
+      const userContainersRef = ref(db, '/users/' + uid + '/containers');
+      // update UI when containers list changes
+      onValue(userContainersRef, (snap) => {
+        containersDiv.innerHTML = '';
+        if (!snap.exists()) { containersDiv.textContent = 'No containers yet.'; return; }
+        const data = snap.val();
+        for (const id in data) {
+          addOrUpdateContainerUI(uid, id, data[id]);
+        }
+      });
+    }
+
+    // create UI widget for a container and attach realtime listener for percent
+    function addOrUpdateContainerUI(uid, deviceId, meta){
+      const widgetId = 'container-' + deviceId;
+      let widget = document.getElementById(widgetId);
+      if (!widget) {
+        widget = document.createElement('div');
+        widget.id = widgetId;
+        widget.style.border = '1px solid #e6f0f8';
+        widget.style.padding = '10px';
+        widget.style.marginBottom = '8px';
+        widget.style.borderRadius = '6px';
+        containersDiv.appendChild(widget);
+      }
+      widget.innerHTML = `<strong>${meta.name || deviceId}</strong> — <span id="${widgetId}-status">Initialising...</span>
+        <div style="margin-top:8px"><div id="${widgetId}-bar" style="height:12px;background:#e9f6ff;border-radius:6px;overflow:hidden">
+        <div id="${widgetId}-fill" style="height:12px;width:0%;background:#0366d6"></div></div>
+        <div style="margin-top:6px">Last: <span id="${widgetId}-last">—</span></div></div>`;
+
+      // listen to percent at /users/<uid>/containers/<deviceId>/percent
+      const pctRef = ref(db, '/users/' + uid + '/containers/' + deviceId + '/percent');
+      onValue(pctRef, (snap) => {
+        const elStatus = document.getElementById(widgetId + '-status');
+        const elFill = document.getElementById(widgetId + '-fill');
+        const elLast = document.getElementById(widgetId + '-last');
+        if (!snap.exists()) {
+          elStatus.textContent = 'No data';
+          elFill.style.width = '0%';
+          elLast.textContent = '—';
+          return;
+        }
+        const pct = Number(snap.val());
+        const clamped = Math.max(0, Math.min(100, isFinite(pct) ? pct : 0));
+        elFill.style.width = clamped + '%';
+        elStatus.textContent = clamped.toFixed(1) + '%';
+        elLast.textContent = new Date().toLocaleString();
+      });
+    }
+
+    // Helper: onValue returns unsubscribe function but Firebase modular onValue returns the unsubscribe when called
+    function onValueRef(r, cb, err) {
+      return onValue(r, cb, err);
+    }
   </script>
 </body>
 </html>
