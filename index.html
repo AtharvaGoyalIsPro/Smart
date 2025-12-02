@@ -3,290 +3,249 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Smart Container - Pair & Dashboard</title>
+  <title>Smart Container — Pair & Dashboard</title>
   <style>
-    body{font-family:system-ui,Segoe UI,Roboto,Arial;margin:18px;background:#f6fafc;color:#04263a}
-    .card{background:white;padding:16px;border-radius:8px;box-shadow:0 6px 18px rgba(2,6,23,0.08);max-width:900px;margin:12px auto}
-    button{padding:8px 12px;border-radius:6px;border:0;background:#0366d6;color:white;cursor:pointer}
-    input{padding:8px;border-radius:6px;border:1px solid #d1e3f0;width:100%}
-    label{display:block;margin-top:8px;font-weight:600}
-    .row{display:flex;gap:12px}
-    .col{flex:1}
-    pre{background:#f3f7fb;padding:8px;border-radius:6px;overflow:auto}
+    /* minimal styles derived from your previous dashboard look */
+    body{font-family:Inter,system-ui,Arial;background:linear-gradient(#021021,#071826);color:#e6eef8;margin:0;padding:22px}
+    .card{max-width:980px;margin:0 auto;background:linear-gradient(#071126,#04101a);padding:20px;border-radius:12px}
+    .top{display:flex;justify-content:space-between;align-items:center}
+    button{background:#00c0ff;border:none;padding:10px 14px;border-radius:8px;font-weight:600;cursor:pointer}
+    .devices{margin-top:18px}
+    .device{padding:12px;border-radius:10px;background:rgba(255,255,255,0.02);margin-bottom:10px;display:flex;justify-content:space-between;align-items:center}
+    .small{font-size:13px;color:#9fb8d6}
   </style>
 </head>
 <body>
   <div class="card">
-    <h2>Smart Container — Pair & Dashboard</h2>
-    <p>Login with Google, then click <b>Add Smart Container</b> to start BLE provisioning.</p>
-
-    <div id="authArea">
-      <div id="userBox">
-        <button id="loginBtn">Sign in with Google</button>
-        <button id="logoutBtn" style="display:none">Sign out</button>
-        <div id="userInfo" style="margin-top:12px"></div>
+    <div class="top">
+      <div>
+        <h1>Smart Container</h1>
+        <div class="small">Pair new device & view your containers (Google Sign-In required)</div>
+      </div>
+      <div id="authArea">
+        <button id="signInBtn">Sign in with Google</button>
       </div>
     </div>
 
-    <hr/>
+    <hr style="margin:14px 0;border-color:rgba(255,255,255,0.03)">
 
-    <div id="pairArea" style="display:none">
-      <h3>Pair a new container</h3>
-      <label>Wi-Fi SSID
-        <input id="ssid" placeholder="Your Wi-Fi SSID"/>
-      </label>
-      <label>Wi-Fi Password
-        <input id="pass" placeholder="Wi-Fi password (sent over BLE)"/>
-      </label>
-
-      <div style="margin-top:12px">
-        <button id="scanBtn">Add Smart Container (BLE scan)</button>
-      </div>
-
-      <div id="pairLog" style="margin-top:12px"><pre id="log">Ready.</pre></div>
+    <div style="display:flex;gap:12px;align-items:center">
+      <button id="pairBtn">Pair New Device (via Bluetooth)</button>
+      <div id="pairStatus" class="small">Not pairing</div>
     </div>
 
-    <hr/>
-
-    <div id="dashboardArea" style="display:none">
-      <h3>Your Containers</h3>
-      <div id="containers"></div>
-    </div>
+    <div class="devices" id="devicesList"></div>
   </div>
 
-  <!-- Firebase SDK (modular) -->
+  <!-- Firebase SDK -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-app.js";
-    import {
-      getDatabase, ref, onValue, set, push, remove, get, child
-    } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
-    import {
-      getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged
-    } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
+    import { getDatabase, ref, onValue, set, update, get, child } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-database.js";
+    import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.22.2/firebase-auth.js";
 
-    // ---- use your Firebase config (from your uploaded file) ----
+    // ---------- YOUR FIREBASE CONFIG ----------
     const firebaseConfig = {
       apiKey: "AIzaSyDDkg0sjNL80TeNSV3CejbGmhZN9QxnR00",
       authDomain: "ultrasonic-c1867.firebaseapp.com",
       databaseURL: "https://ultrasonic-c1867-default-rtdb.firebaseio.com",
       projectId: "ultrasonic-c1867",
-      storageBucket: "ultrasonic-c1867.appspot.com",
+      storageBucket: "ultrasonic-c1867.firebasestorage.app",
       messagingSenderId: "754300602341",
       appId: "1:754300602341:web:9822d6453942139ef5d10c",
       measurementId: "G-4KC3E3HHB1"
     };
-    // ----------------------------------------------------------
+    // ------------------------------------------
 
-    // UI elements
-    const loginBtn = document.getElementById('loginBtn');
-    const logoutBtn = document.getElementById('logoutBtn');
-    const userInfo = document.getElementById('userInfo');
-    const pairArea = document.getElementById('pairArea');
-    const dashboardArea = document.getElementById('dashboardArea');
-    const scanBtn = document.getElementById('scanBtn');
-    const logEl = document.getElementById('log');
-    const ssidEl = document.getElementById('ssid');
-    const passEl = document.getElementById('pass');
-    const containersDiv = document.getElementById('containers');
-
-    function log(msg){ const t = new Date().toLocaleTimeString(); logEl.textContent = `[${t}] ${msg}\n` + logEl.textContent; }
-
-    // init firebase
+    // Initialize
     const app = initializeApp(firebaseConfig);
     const db = getDatabase(app);
     const auth = getAuth(app);
+    const provider = new GoogleAuthProvider();
 
-    // auth handlers
-    loginBtn.onclick = async () => {
-      const provider = new GoogleAuthProvider();
+    // UI
+    const signInBtn = document.getElementById('signInBtn');
+    const authArea = document.getElementById('authArea');
+    const pairBtn = document.getElementById('pairBtn');
+    const pairStatus = document.getElementById('pairStatus');
+    const devicesList = document.getElementById('devicesList');
+
+    let currentUser = null;
+
+    signInBtn.addEventListener('click', async () => {
       try {
         await signInWithPopup(auth, provider);
-      } catch (e) { alert('Sign-in failed: ' + e.message); }
-    };
-    logoutBtn.onclick = async () => { await signOut(auth); };
-
-    onAuthStateChanged(auth, user => {
-      if (user) {
-        loginBtn.style.display = 'none';
-        logoutBtn.style.display = 'inline-block';
-        userInfo.textContent = `Signed in: ${user.displayName} (${user.email})`;
-        pairArea.style.display = 'block';
-        dashboardArea.style.display = 'block';
-        startDashboardForUser(user.uid);
-      } else {
-        loginBtn.style.display = 'inline-block';
-        logoutBtn.style.display = 'none';
-        userInfo.textContent = '';
-        pairArea.style.display = 'none';
-        dashboardArea.style.display = 'none';
-        containersDiv.innerHTML = '';
+      } catch (e) {
+        alert('Sign in failed: ' + e.message);
       }
     });
 
-    // Utility: generate simple random claim token (UUID-like)
-    function makeClaimToken(){
-      return 'ct-' + ([1,1,1,1].map(()=> Math.random().toString(16).slice(2,10)).join('-'));
+    // sign out UI toggle
+    function renderAuth(user) {
+      authArea.innerHTML = '';
+      if (user) {
+        const nameSpan = document.createElement('span');
+        nameSpan.textContent = user.displayName || user.email;
+        nameSpan.style.marginRight = '10px';
+        const out = document.createElement('button');
+        out.textContent = 'Sign out';
+        out.onclick = () => signOut(auth);
+        authArea.appendChild(nameSpan);
+        authArea.appendChild(out);
+      } else {
+        const btn = document.createElement('button');
+        btn.textContent = 'Sign in with Google';
+        btn.onclick = () => signInWithPopup(auth, provider);
+        authArea.appendChild(btn);
+      }
     }
 
-    // BLE provisioning constants (must match ESP32 service + characteristic UUIDs)
-    const SERVICE_UUID = '6e400001-b5a3-f393-e0a9-e50e24dcca9e'; // example NUS-like
-    const CHAR_SSID_UUID = '6e400002-b5a3-f393-e0a9-e50e24dcca9e';
-    const CHAR_PASS_UUID = '6e400003-b5a3-f393-e0a9-e50e24dcca9e';
-    const CHAR_TOKEN_UUID = '6e400004-b5a3-f393-e0a9-e50e24dcca9e';
-    const CHAR_INFO_UUID = '6e400005-b5a3-f393-e0a9-e50e24dcca9e'; // read deviceId
+    onAuthStateChanged(auth, user => {
+      currentUser = user;
+      renderAuth(user);
+      if (user) {
+        listenToUserDevices(user.uid);
+      } else {
+        devicesList.innerHTML = '<div class="small">Sign in to see your devices.</div>';
+      }
+    });
 
-    // When user clicks scan -> connect flow
-    scanBtn.onclick = async () => {
-      if (!auth.currentUser) { alert('Sign in first'); return; }
-      const ssid = ssidEl.value.trim();
-      const pwd = passEl.value;
-      if (!ssid) { alert('Enter Wi-Fi SSID'); return; }
+    // LISTEN to /users/<uid>/devices and then render each device with live RTDB listener.
+    const deviceListeners = {}; // track listeners to detach if needed
+    function listenToUserDevices(uid) {
+      const userDevicesRef = ref(db, '/users/' + uid + '/devices');
+      onValue(userDevicesRef, snapshot => {
+        const val = snapshot.val();
+        devicesList.innerHTML = '';
+        if (!val) {
+          devicesList.innerHTML = '<div class="small">No devices linked. Pair a device to get started.</div>';
+          return;
+        }
+        Object.keys(val).forEach(deviceId => {
+          renderDeviceCard(deviceId, uid);
+        });
+      });
+    }
 
-      log('Starting BLE scan (choose your device when prompted)...');
+    function renderDeviceCard(deviceId, uid) {
+      const node = document.createElement('div');
+      node.className = 'device';
+      node.id = 'device-' + deviceId;
+      node.innerHTML = `<div>
+        <div style="font-weight:700">${deviceId}</div>
+        <div class="small" id="device-${deviceId}-meta">loading…</div>
+      </div>
+      <div>
+        <div style="font-size:22px;font-weight:800" id="device-${deviceId}-pct">--.-%</div>
+      </div>`;
+      devicesList.appendChild(node);
+
+      // attach realtime listener to /devices/<deviceId>/data/fillPercent
+      const dataRefPath = '/devices/' + deviceId + '/data/fillPercent';
+      const dataRef = ref(db, dataRefPath);
+      if (deviceListeners[deviceId]) {
+        // already listening (unlikely) — don't add duplicate
+      } else {
+        onValue(dataRef, snap => {
+          const v = snap.val();
+          const pctEl = document.getElementById('device-' + deviceId + '-pct');
+          const metaEl = document.getElementById('device-' + deviceId + '-meta');
+          if (v === null || v === undefined) {
+            pctEl.textContent = '--.-%';
+            metaEl.textContent = 'No data yet';
+          } else {
+            pctEl.textContent = parseFloat(v).toFixed(1) + '%';
+            metaEl.textContent = 'Live — updated';
+          }
+        });
+        deviceListeners[deviceId] = true;
+      }
+    }
+
+    // --- PAIRING SEQUENCE (Web Bluetooth) ---
+    // BLE service/characteristic UUIDs must match the ESP
+    const SERVICE_UUID = '3c3a1f00-8d1c-4d0a-9f8d-4b6f3f6a4a11';
+    const CHAR_SSID_UUID = '3c3a1f01-8d1c-4d0a-9f8d-4b6f3f6a4a11';
+    const CHAR_PASS_UUID = '3c3a1f02-8d1c-4d0a-9f8d-4b6f3f6a4a11';
+    const CHAR_CMD_UUID  = '3c3a1f03-8d1c-4d0a-9f8d-4b6f3f6a4a11';
+
+    pairBtn.addEventListener('click', async () => {
+      if (!currentUser) return alert('Please sign in with Google first.');
       try {
+        pairStatus.textContent = 'Scanning for SmartContainer devices…';
         const device = await navigator.bluetooth.requestDevice({
-          filters: [{services:[SERVICE_UUID]}],
+          filters: [{ services: [SERVICE_UUID] }],
           optionalServices: [SERVICE_UUID]
         });
-        log('Selected device: ' + device.name);
+
+        pairStatus.textContent = 'Connecting to device…';
         const server = await device.gatt.connect();
         const service = await server.getPrimaryService(SERVICE_UUID);
 
-        // read device info (deviceId)
-        let deviceId = 'unknown-device';
+        const charSSID = await service.getCharacteristic(CHAR_SSID_UUID);
+        const charPASS = await service.getCharacteristic(CHAR_PASS_UUID);
+        const charCMD  = await service.getCharacteristic(CHAR_CMD_UUID);
+
+        // Read deviceID from the CMD char (device set it initially)
+        let deviceID = '';
         try {
-          const infoChar = await service.getCharacteristic(CHAR_INFO_UUID);
-          const infoVal = await infoChar.readValue();
-          deviceId = new TextDecoder().decode(infoVal) || deviceId;
-          log('Device UID: ' + deviceId);
-        } catch(e) { log('Could not read device info: ' + e.message); }
+          const val = await charCMD.readValue();
+          const decoder = new TextDecoder('utf-8');
+          deviceID = decoder.decode(val);
+        } catch (e) {
+          console.warn('Could not read deviceID from CMD characteristic', e);
+        }
+        if (!deviceID) {
+          // fallback to device.name
+          deviceID = device.name || ('CNTR-' + Math.random().toString(36).substr(2,6).toUpperCase());
+        }
+
+        // Ask user for WiFi credentials (simple prompt for MVP)
+        const ssid = prompt('Enter your Wi-Fi SSID (home network name):');
+        if (!ssid) { pairStatus.textContent = 'Pair cancelled'; return; }
+        const pass = prompt('Enter Wi-Fi password: (leave blank for open network)');
+        pairStatus.textContent = 'Sending credentials to device…';
 
         // write SSID
-        const ssidChar = await service.getCharacteristic(CHAR_SSID_UUID);
-        await ssidChar.writeValue(new TextEncoder().encode(ssid));
-        log('Sent SSID over BLE');
+        const encoder = new TextEncoder();
+        await charSSID.writeValue(encoder.encode(ssid));
+        await new Promise(r => setTimeout(r, 200));
+        await charPASS.writeValue(encoder.encode(pass || ''));
 
-        // write PASS (if empty, send empty string)
-        const passChar = await service.getCharacteristic(CHAR_PASS_UUID);
-        await passChar.writeValue(new TextEncoder().encode(pwd || ''));
-        log('Sent Wi-Fi password over BLE');
+        pairStatus.textContent = 'Waiting for device to connect to Wi-Fi…';
 
-        // write claim token
-        const claimToken = makeClaimToken();
-        const tokenChar = await service.getCharacteristic(CHAR_TOKEN_UUID);
-        await tokenChar.writeValue(new TextEncoder().encode(claimToken));
-        log('Sent claim token: ' + claimToken);
+        // Subscribe to notifications on CMD characteristic to receive CONNECTING/OK/FAIL
+        await charCMD.startNotifications();
+        charCMD.addEventListener('characteristicvaluechanged', async (evt) => {
+          const decoder = new TextDecoder('utf-8');
+          const msg = decoder.decode(evt.target.value);
+          console.log('CMD notification:', msg);
+          if (msg === 'CONNECTING') {
+            pairStatus.textContent = 'Device connecting to Wi-Fi…';
+          } else if (msg === 'OK') {
+            pairStatus.textContent = 'Paired & Wi-Fi connected! Claiming device...';
+            // Claim device in Firebase: /users/<uid>/devices/<deviceID> = true and /devices/<deviceID>/owner = uid
+            const userDevicesPath = '/users/' + currentUser.uid + '/devices/' + deviceID;
+            const ownerPath = '/devices/' + deviceID + '/owner';
+            await set(ref(db, userDevicesPath), true);
+            await set(ref(db, ownerPath), currentUser.uid);
+            pairStatus.textContent = 'Device claimed. It will appear on your dashboard shortly.';
+            // disconnect from device
+            try { server.disconnect(); } catch(e){}
+            await charCMD.stopNotifications();
+          } else if (msg === 'FAIL') {
+            pairStatus.textContent = 'Wi-Fi connect failed. Check credentials and try again.';
+            await charCMD.stopNotifications();
+          }
+        });
 
-        // Now wait for the device to appear in /unclaimed/<deviceId> with matching token
-        log('Waiting for device to register itself in Firebase (/unclaimed/' + deviceId + ')');
-        await waitForClaim(deviceId, claimToken, auth.currentUser.uid);
-        log('Device successfully claimed and linked to your account.');
-
-        // disconnect BLE
-        try { server.disconnect(); } catch(e){}
       } catch (err) {
         console.error(err);
-        alert('BLE provisioning failed: ' + (err.message || err));
-        log('BLE provisioning error: ' + (err.message || err));
+        pairStatus.textContent = 'Pairing failed: ' + err.message;
       }
-    };
+    });
 
-    // Wait for device write to /unclaimed/<deviceId> with the expected token,
-    // then move the entry to /users/<uid>/containers/<deviceId>
-    function waitForClaim(deviceId, claimToken, uid){
-      return new Promise((resolve, reject) => {
-        const unclaimedRef = ref(db, '/unclaimed/' + deviceId);
-        const timeout = setTimeout(()=> {
-          // stop listening after 2 minutes
-          offListener();
-          reject(new Error('Timed out waiting for device to register.'));
-        }, 120000);
-
-        function offListener(){ onVal && onVal(); clearTimeout(timeout); }
-
-        // listen for unclaimed/<deviceId>
-        let onVal = onValue(unclaimedRef, async (snap) => {
-          if (!snap.exists()) return;
-          const data = snap.val();
-          if (!data || data.claimToken !== claimToken) {
-            log('Found unclaimed entry but token mismatch or missing. Waiting...');
-            return;
-          }
-          // token matches -> move under user
-          try {
-            const userPath = '/users/' + uid + '/containers/' + deviceId;
-            await set(ref(db, userPath), data);
-            await remove(unclaimedRef);
-            log('Moved device to ' + userPath);
-            offListener();
-            resolve();
-          } catch (e) {
-            offListener();
-            reject(e);
-          }
-        }, (err) => {
-          offListener();
-          reject(err);
-        });
-      });
-    }
-
-    // DASHBOARD: show user containers and live percent
-    function startDashboardForUser(uid){
-      const userContainersRef = ref(db, '/users/' + uid + '/containers');
-      // update UI when containers list changes
-      onValue(userContainersRef, (snap) => {
-        containersDiv.innerHTML = '';
-        if (!snap.exists()) { containersDiv.textContent = 'No containers yet.'; return; }
-        const data = snap.val();
-        for (const id in data) {
-          addOrUpdateContainerUI(uid, id, data[id]);
-        }
-      });
-    }
-
-    // create UI widget for a container and attach realtime listener for percent
-    function addOrUpdateContainerUI(uid, deviceId, meta){
-      const widgetId = 'container-' + deviceId;
-      let widget = document.getElementById(widgetId);
-      if (!widget) {
-        widget = document.createElement('div');
-        widget.id = widgetId;
-        widget.style.border = '1px solid #e6f0f8';
-        widget.style.padding = '10px';
-        widget.style.marginBottom = '8px';
-        widget.style.borderRadius = '6px';
-        containersDiv.appendChild(widget);
-      }
-      widget.innerHTML = `<strong>${meta.name || deviceId}</strong> — <span id="${widgetId}-status">Initialising...</span>
-        <div style="margin-top:8px"><div id="${widgetId}-bar" style="height:12px;background:#e9f6ff;border-radius:6px;overflow:hidden">
-        <div id="${widgetId}-fill" style="height:12px;width:0%;background:#0366d6"></div></div>
-        <div style="margin-top:6px">Last: <span id="${widgetId}-last">—</span></div></div>`;
-
-      // listen to percent at /users/<uid>/containers/<deviceId>/percent
-      const pctRef = ref(db, '/users/' + uid + '/containers/' + deviceId + '/percent');
-      onValue(pctRef, (snap) => {
-        const elStatus = document.getElementById(widgetId + '-status');
-        const elFill = document.getElementById(widgetId + '-fill');
-        const elLast = document.getElementById(widgetId + '-last');
-        if (!snap.exists()) {
-          elStatus.textContent = 'No data';
-          elFill.style.width = '0%';
-          elLast.textContent = '—';
-          return;
-        }
-        const pct = Number(snap.val());
-        const clamped = Math.max(0, Math.min(100, isFinite(pct) ? pct : 0));
-        elFill.style.width = clamped + '%';
-        elStatus.textContent = clamped.toFixed(1) + '%';
-        elLast.textContent = new Date().toLocaleString();
-      });
-    }
-
-    // Helper: onValue returns unsubscribe function but Firebase modular onValue returns the unsubscribe when called
-    function onValueRef(r, cb, err) {
-      return onValue(r, cb, err);
-    }
+    // Simple initial content
+    devicesList.innerHTML = '<div class="small">Sign in to get started. After pairing a device, it will appear here.</div>';
   </script>
 </body>
 </html>
